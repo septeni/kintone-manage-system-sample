@@ -1,0 +1,42 @@
+name: Kintone Deploy
+
+# デモ用なので、コメントアウト
+# on:
+#   push:
+#     branches:
+#       - main
+
+jobs:
+  kintone_deploy:
+    name: Kintone Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    env:
+      KINTONE_USERNAME: ${{ secrets.KINTONE_USER }}
+      KINTONE_PASSWORD: ${{ secrets.KINTONE_PASSWORD }}
+      KINTONE_BASE_URL: ${{ secrets.KINTONE_BASE_URL }}
+
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        run: npm install
+        shell: bash
+
+      - name: Deploy
+        run: |
+          for app in app1
+          do
+            cp bin/apps/$app/_prod_config.ts bin/apps/$app/config.ts
+            npm run deploy -- -t $app --auto-deploy
+          done
+        shell: bash

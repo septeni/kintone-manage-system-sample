@@ -1,0 +1,89 @@
+name: Kintone Diff
+
+on:
+  pull_request:
+    paths:
+      - 'bin/apps/**'
+
+jobs:
+  kintone_diff:
+    name: Kintone Diff
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    env:
+      KINTONE_USERNAME: ${{ secrets.KINTONE_USER }}
+      KINTONE_PASSWORD: ${{ secrets.KINTONE_PASSWORD }}
+      KINTONE_BASE_URL: ${{ secrets.KINTONE_BASE_URL }}
+
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        run: npm install
+        shell: bash
+
+      - name: Diff
+        run: |
+          for app in app1
+          do
+            cp bin/apps/$app/_prod_config.ts bin/apps/$app/config.ts
+            npm run diff -- -t $app > bin/apps/$app/diff.txt
+          done
+        working-directory: frontend/forms
+        shell: bash
+
+      - name: Comment to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const apps = ['app1'];
+
+            let lines = ''
+            let details = ''
+
+            for (const app of apps) {
+              const diffText = fs.readFileSync(`frontend/forms/bin/apps/${app}/diff.txt`, 'utf8');
+
+              const diffArray = diffText.split('\n');
+              const layoutDiffSummary = diffArray[diffArray.length - 2];
+              const fieldDiffSummary = diffArray[diffArray.length - 3];
+              const diffSummary = `${fieldDiffSummary} </br> ${layoutDiffSummary}`;
+
+              lines += `| ${app} | ${diffSummary} | \n`
+
+              details += '<details>\n' +
+                `<summary><h3> ${app} </h3></summary>\n\n` +
+                '```diff\n' +
+                `${diffText}\n` +
+                '```\n' +
+                '</details>\n\n'
+            }
+
+            const body = `
+            # Kintone Diff Summary
+
+            | App | Diff |
+            | --- | --- |
+            ${lines}
+
+            ${details}
+            `
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: body
+            })
+
